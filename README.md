@@ -1,25 +1,25 @@
-# DLL Overlay/Hook
+# DLL Overlay / Hook
 
-轻量 DX11 + MinHook DLL，用于挂接游戏渲染与 PTTRPlayer 逻辑，采集坐标并绘制 ImGui 叠加层。
+DX11 + MinHook DLL to capture the local player's world position and render a minimal ImGui overlay.
 
-## 功能概览
-- DX11 Present/Resize 钩子 + Win32 WndProc 捕获 `Insert` 热键开关 UI。
-- PTTRPlayer 生命周期钩子（Awake/OnEnable/Update/OnDestroy/Die），自动捕获本地玩家并读取足部位置或 Transform 坐标。
-- 异常防护：对 Feet/Transform 调用和 Update 入口添加 SEH，崩溃会写入 `D:\Project\overlay_log.txt` 并自动降级。
-- ImGui 渲染安全检查，空绘制数据时跳过，避免断言。
+## Features
+- DX11 Present/Resize hooks and Win32 WndProc hook (`Insert` toggles overlay visibility).
+- PTTRPlayer lifecycle hooks (Awake/OnEnable/Update/OnDestroy/Die) auto-capture the local player.
+- Position read path: `PTTRPlayer::GetTargetPoint` first, fallback to `Transform::get_position` (self then controller), all wrapped in SEH.
+- Logging to `D:\Project\overlay_log.txt` for hook state and any read exceptions.
+- ImGui render safety checks to avoid draw-data assertions/crashes.
 
-## 构建
-1. 打开 `DLL/DLL.vcxproj`（目标名已设为 `DLL.dll`）。
-2. 选择需要的配置/平台（Debug/Release, x86/x64）。
-3. 生成后产物位于 `bin/<arch>/<config>/DLL.dll`；调试符号 `DLL.pdb`。
+## Build
+1. Open `DLL/DLL.vcxproj` (target name already set to `DLL.dll`).
+2. Select configuration/platform (Debug/Release, x86/x64).
+3. Build; outputs go to `bin/<arch>/<config>/DLL.dll` with `DLL.pdb` symbols.
 
-## 使用
-- 将 `DLL.dll` 注入目标进程（需匹配架构）。
-- 默认自动挂接游戏创建的 swapchain；若游戏启动前已创建 swapchain，也会通过 dummy swapchain 获取 DX vtable。
-- 日志写入 `D:\Project\overlay_log.txt`，包含钩子状态、崩溃信息、玩家捕获/死亡等。
-- 按 `Insert` 显示/隐藏 ImGui 窗口；窗口内展示 FPS 与本地玩家 XYZ。
+## Usage
+- Inject the matching-arch `DLL.dll` into the game process.
+- Swapchain hooks are set automatically (dummy swapchain used if needed).
+- Press `Insert` to show/hide the overlay. Window displays FPS and local player XYZ.
+- Check `D:\Project\overlay_log.txt` for diagnostics.
 
-## 注意事项
-- 若 Feet 读取崩溃超过 3 次，会自动停用 Feet 函数并仅用 Transform 备选路径。
-- Transform icall 解析失败时会记录日志并禁用该路径，避免非法调用。
-- 如遇崩溃或无坐标，请先查看 `overlay_log.txt` 末尾的 SEH/Transform/Feet 日志并反馈。\
+## Notes
+- Feet read is disabled by default; Transform/TargetPoint paths have SEH guards and will log on failure.
+- If positions stop updating or a crash occurs, inspect the tail of `overlay_log.txt` for `GetTargetPoint`/`Transform_get_position` entries and share if further tuning is needed.

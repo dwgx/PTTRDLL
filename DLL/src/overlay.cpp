@@ -59,14 +59,6 @@ OVERLAY_API void Overlay_Render()
 {
     if (!g_inited) return;
 
-    if (!g_LocalPlayer) {
-        static int warn_count = 0;
-        if (warn_count < 10) {
-            std::ofstream("D:\\Project\\overlay_log.txt", std::ios::app) << "[Overlay_Render] local player missing\n";
-            ++warn_count;
-        }
-    }
-
     ImGui::Begin("Overlay DLL");
     ImGui::Text("Hello from DLL!");
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
