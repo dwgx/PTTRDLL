@@ -1,9 +1,9 @@
 #include "pch.h"
 #include <d3d11.h>
-#include <fstream>
 
 #include "overlay_api.h"
 #include "game_types.h"
+#include "logging.h"
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
@@ -15,9 +15,46 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARA
 namespace
 {
     bool g_inited = false;
+    bool g_frameBegun = false;
     HWND g_hwnd = nullptr;
     ID3D11Device* g_device = nullptr;
     ID3D11DeviceContext* g_context = nullptr;
+}
+
+static ImDrawData* FinalizeFrame()
+{
+    ImGui::Render();
+    g_frameBegun = false;
+    return ImGui::GetDrawData();
+}
+
+static bool CanRenderDrawData(ImDrawData* draw)
+{
+    if (!draw)
+        return false;
+    if (draw->DisplaySize.x <= 0.0f || draw->DisplaySize.y <= 0.0f)
+        return false;
+    if (draw->CmdListsCount <= 0)
+        return false;
+    if (draw->CmdListsCount != draw->CmdLists.Size)
+    {
+        static int warnCount = 0;
+        if (warnCount++ < 5)
+            AppendLogFmt("[Overlay] DrawData mismatch CmdListsCount=%d Size=%d (skipping frame)\n",
+                draw->CmdListsCount, draw->CmdLists.Size);
+        return false;
+    }
+    for (int i = 0; i < draw->CmdListsCount; ++i)
+    {
+        if (draw->CmdLists[i] == nullptr)
+        {
+            static int warnNull = 0;
+            if (warnNull++ < 5)
+                AppendLogFmt("[Overlay] DrawData null cmd list at %d (skipping frame)\n", i);
+            return false;
+        }
+    }
+    return true;
 }
 
 OVERLAY_API bool Overlay_Init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* context)
@@ -25,7 +62,7 @@ OVERLAY_API bool Overlay_Init(HWND hwnd, ID3D11Device* device, ID3D11DeviceConte
     if (g_inited) return true;
     if (!hwnd || !device || !context) return false;
 
-    std::ofstream("D:\\Project\\overlay_log.txt", std::ios::app) << "[Overlay_Init] hwnd=" << hwnd << " device=" << device << " ctx=" << context << "\n";
+    AppendLogFmt("[Overlay_Init] hwnd=%p device=%p ctx=%p\n", hwnd, device, context);
 
     g_hwnd = hwnd;
     g_device = device;
@@ -53,11 +90,12 @@ OVERLAY_API void Overlay_NewFrame()
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+    g_frameBegun = true;
 }
 
 OVERLAY_API void Overlay_Render()
 {
-    if (!g_inited) return;
+    if (!g_inited || !g_frameBegun) return;
 
     ImGui::Begin("Overlay DLL");
     ImGui::Text("Hello from DLL!");
@@ -77,20 +115,18 @@ OVERLAY_API void Overlay_Render()
     }
     ImGui::End();
 
-    ImGui::Render();
-    ImDrawData* draw = ImGui::GetDrawData();
-    if (draw && draw->DisplaySize.x > 0.0f && draw->DisplaySize.y > 0.0f && draw->CmdListsCount > 0) {
+    ImDrawData* draw = FinalizeFrame();
+    if (CanRenderDrawData(draw)) {
         ImGui_ImplDX11_RenderDrawData(draw);
     }
 }
 
 OVERLAY_API void Overlay_EndFrame(bool renderDrawData)
 {
-    if (!g_inited) return;
-    ImGui::Render();
+    if (!g_inited || !g_frameBegun) return;
+    ImDrawData* draw = FinalizeFrame();
     if (renderDrawData) {
-        ImDrawData* draw = ImGui::GetDrawData();
-        if (draw && draw->DisplaySize.x > 0.0f && draw->DisplaySize.y > 0.0f && draw->CmdListsCount > 0) {
+        if (CanRenderDrawData(draw)) {
             ImGui_ImplDX11_RenderDrawData(draw);
         }
     }
@@ -105,6 +141,7 @@ OVERLAY_API void Overlay_Shutdown()
     ImGui::DestroyContext();
 
     g_inited = false;
+    g_frameBegun = false;
     g_hwnd = nullptr;
     g_device = nullptr;
     g_context = nullptr;
