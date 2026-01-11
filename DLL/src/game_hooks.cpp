@@ -1,7 +1,9 @@
 #include "pch.h"
 #include <atomic>
+#include <algorithm>
 
 #include "game_types.h"
+#include "config.h"
 #include "logging.h"
 #include "MinHook.h"
 
@@ -11,6 +13,12 @@
 #define RVA_PTTRPLAYER_ONDESTROY     0x71F440   // PTTRPlayer::OnDestroy
 #define RVA_PTTRPLAYER_DIE           0x72F860   // PTTRPlayer::Die
 #define RVA_PTTRPLAYER_GETTARGETPOINT 0x71B620  // PTTRPlayer::GetTargetPoint
+#define RVA_PTTRPLAYER_GET_HEALTH    0x718EE0   // PTTRPlayer::get_health
+#define RVA_PTTRPLAYER_SET_HEALTH    0x718F40   // PTTRPlayer::set_health
+#define RVA_PTTRPLAYER_GET_HEALTHBOOST 0x7192A0 // PTTRPlayer::get_healthBoost
+#define RVA_PTTRPLAYER_SET_HEALTHBOOST 0x719320 // PTTRPlayer::set_healthBoost
+#define RVA_PTTRPLAYER_GET_HEALTHUPGRADE 0x719730 // PTTRPlayer::get_healthUpgrade
+#define RVA_PTTRPLAYER_SET_HEALTHUPGRADE 0x7197B0 // PTTRPlayer::set_healthUpgrade
 
 using GetTargetPoint_t = void(__fastcall*)(Vector3* ret, PTTRPlayer_o* __this, void* method);
 using PTTRPlayer_Update_t = void(__fastcall*)(PTTRPlayer_o* __this, void* method);
@@ -18,6 +26,12 @@ using PTTRPlayer_Awake_t = void(__fastcall*)(PTTRPlayer_o* __this, void* method)
 using PTTRPlayer_OnEnable_t = void(__fastcall*)(PTTRPlayer_o* __this, void* method);
 using PTTRPlayer_OnDestroy_t = void(__fastcall*)(PTTRPlayer_o* __this, void* method);
 using PTTRPlayer_Die_t = void(__fastcall*)(PTTRPlayer_o* __this, void* method);
+using PTTRPlayer_get_health_t = float(__fastcall*)(PTTRPlayer_o* __this, void* method);
+using PTTRPlayer_set_health_t = void(__fastcall*)(PTTRPlayer_o* __this, float value, void* method);
+using PTTRPlayer_get_healthBoost_t = int(__fastcall*)(PTTRPlayer_o* __this, void* method);
+using PTTRPlayer_set_healthBoost_t = void(__fastcall*)(PTTRPlayer_o* __this, int value, void* method);
+using PTTRPlayer_get_healthUpgrade_t = int(__fastcall*)(PTTRPlayer_o* __this, void* method);
+using PTTRPlayer_set_healthUpgrade_t = void(__fastcall*)(PTTRPlayer_o* __this, int value, void* method);
 using Component_get_transform_t = void* (__fastcall*)(void* __this, void* method);
 using Transform_get_position_Injected_t = void(__fastcall*)(Vector3* ret, void* __this, void* method);
 using il2cpp_resolve_icall_t = void* (__cdecl*)(const char* name);
@@ -28,6 +42,13 @@ static PTTRPlayer_Awake_t      o_Awake = nullptr;
 static PTTRPlayer_OnEnable_t   o_OnEnable = nullptr;
 static PTTRPlayer_OnDestroy_t  o_OnDestroy = nullptr;
 static PTTRPlayer_Die_t        o_Die = nullptr;
+static PTTRPlayer_get_health_t PTTRPlayer_get_health = nullptr;
+static PTTRPlayer_set_health_t PTTRPlayer_set_health = nullptr;
+static PTTRPlayer_set_health_t o_set_health = nullptr;
+static PTTRPlayer_get_healthBoost_t PTTRPlayer_get_healthBoost = nullptr;
+static PTTRPlayer_set_healthBoost_t PTTRPlayer_set_healthBoost = nullptr;
+static PTTRPlayer_get_healthUpgrade_t PTTRPlayer_get_healthUpgrade = nullptr;
+static PTTRPlayer_set_healthUpgrade_t PTTRPlayer_set_healthUpgrade = nullptr;
 static Component_get_transform_t Component_get_transform = nullptr;
 static Transform_get_position_Injected_t Transform_get_position_Injected = nullptr;
 static il2cpp_resolve_icall_t    il2cpp_resolve_icall_fn = nullptr;
@@ -38,12 +59,82 @@ static std::atomic_int         g_transformExCount{ 0 };
 // Exported globals declared in game_types.h
 PTTRPlayer_o*                  g_LocalPlayer = nullptr;
 Vector3                        g_LocalPlayerPos{};
+float                          g_LocalPlayerHealth = 0.0f;
+int                            g_LocalPlayerHealthBoost = 0;
+int                            g_LocalPlayerHealthUpgrade = 0;
 
 static inline void ResetLocalPlayerState()
 {
     std::memset(&g_LocalPlayerPos, 0, sizeof(g_LocalPlayerPos));
+    g_LocalPlayerHealth = 0.0f;
+    g_LocalPlayerHealthBoost = 0;
+    g_LocalPlayerHealthUpgrade = 0;
     g_targetPointExCount.store(0, std::memory_order_relaxed);
     g_transformExCount.store(0, std::memory_order_relaxed);
+}
+
+static void RefreshLocalPlayerVitals(PTTRPlayer_o* player)
+{
+    if (!player)
+        return;
+
+    if (PTTRPlayer_get_health) {
+        __try { g_LocalPlayerHealth = PTTRPlayer_get_health(player, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+    if (PTTRPlayer_get_healthBoost) {
+        __try { g_LocalPlayerHealthBoost = PTTRPlayer_get_healthBoost(player, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+    if (PTTRPlayer_get_healthUpgrade) {
+        __try { g_LocalPlayerHealthUpgrade = PTTRPlayer_get_healthUpgrade(player, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+}
+
+static void ApplyGodMode(PTTRPlayer_o* player)
+{
+    const auto& cfg = Config::Get();
+    if (!cfg.godModeEnabled || !player)
+        return;
+
+    PTTRPlayer_set_health_t setHealth = o_set_health ? o_set_health : PTTRPlayer_set_health;
+    if (setHealth) {
+        __try { setHealth(player, cfg.godModeHealth, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+    if (PTTRPlayer_set_healthBoost) {
+        __try { PTTRPlayer_set_healthBoost(player, cfg.godModeHealthBoost, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+    if (PTTRPlayer_set_healthUpgrade) {
+        __try { PTTRPlayer_set_healthUpgrade(player, cfg.godModeHealthUpgrade, nullptr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+
+    g_LocalPlayerHealth = cfg.godModeHealth;
+    g_LocalPlayerHealthBoost = cfg.godModeHealthBoost;
+    g_LocalPlayerHealthUpgrade = cfg.godModeHealthUpgrade;
+}
+
+static void __fastcall hk_PTTRPlayer_set_health(PTTRPlayer_o* __this, float value, void* method)
+{
+    const auto& cfg = Config::Get();
+    if (cfg.godModeEnabled && __this) {
+        if (!g_LocalPlayer)
+            g_LocalPlayer = __this;
+        if (__this == g_LocalPlayer) {
+            value = std::max(value, cfg.godModeHealth);
+            g_LocalPlayerHealth = value;
+        }
+    }
+    else if (__this == g_LocalPlayer) {
+        g_LocalPlayerHealth = value;
+    }
+
+    if (o_set_health) {
+        o_set_health(__this, value, method);
+    }
 }
 
 // PTTRPlayer::Update hook: capture local player and read position each frame.
@@ -71,6 +162,9 @@ static void __fastcall hk_PTTRPlayer_Update(PTTRPlayer_o* __this, void* method) 
 
         if (__this != g_LocalPlayer)
             return;
+
+        RefreshLocalPlayerVitals(__this);
+        ApplyGodMode(__this);
 
         // Prefer GetTargetPoint
         if (GetTargetPoint) {
@@ -212,11 +306,19 @@ bool InstallGameHooks() {
             il2cpp_resolve_icall_fn("UnityEngine.Transform::get_position_Injected(UnityEngine.Vector3&)"));
     }
 
+    PTTRPlayer_get_health = reinterpret_cast<PTTRPlayer_get_health_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_GET_HEALTH);
+    PTTRPlayer_set_health = reinterpret_cast<PTTRPlayer_set_health_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_SET_HEALTH);
+    PTTRPlayer_get_healthBoost = reinterpret_cast<PTTRPlayer_get_healthBoost_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_GET_HEALTHBOOST);
+    PTTRPlayer_set_healthBoost = reinterpret_cast<PTTRPlayer_set_healthBoost_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_SET_HEALTHBOOST);
+    PTTRPlayer_get_healthUpgrade = reinterpret_cast<PTTRPlayer_get_healthUpgrade_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_GET_HEALTHUPGRADE);
+    PTTRPlayer_set_healthUpgrade = reinterpret_cast<PTTRPlayer_set_healthUpgrade_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_SET_HEALTHUPGRADE);
+
     auto addrUpdate = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_UPDATE;
     auto addrAwake = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_AWAKE;
     auto addrOnEnable = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_ONENABLE;
     auto addrOnDestroy = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_ONDESTROY;
     auto addrDie = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_DIE;
+    auto addrSetHealth = reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_SET_HEALTH;
     GetTargetPoint = reinterpret_cast<GetTargetPoint_t>(reinterpret_cast<uint8_t*>(g_gameAsm) + RVA_PTTRPLAYER_GETTARGETPOINT);
 
     bool okUpdate = CreateAndEnableHook(addrUpdate, &hk_PTTRPlayer_Update, reinterpret_cast<void**>(&o_Update), "PTTRPlayer::Update");
@@ -224,16 +326,17 @@ bool InstallGameHooks() {
     bool okOnEnable = CreateAndEnableHook(addrOnEnable, &hk_PTTRPlayer_OnEnable, reinterpret_cast<void**>(&o_OnEnable), "PTTRPlayer::OnEnable");
     bool okOnDestroy = CreateAndEnableHook(addrOnDestroy, &hk_PTTRPlayer_OnDestroy, reinterpret_cast<void**>(&o_OnDestroy), "PTTRPlayer::OnDestroy");
     bool okDie = CreateAndEnableHook(addrDie, &hk_PTTRPlayer_Die, reinterpret_cast<void**>(&o_Die), "PTTRPlayer::Die");
+    bool okSetHealth = CreateAndEnableHook(addrSetHealth, &hk_PTTRPlayer_set_health, reinterpret_cast<void**>(&o_set_health), "PTTRPlayer::set_health");
 
-    const bool allOk = okUpdate && okAwake && okOnEnable && okOnDestroy && okDie;
+    const bool allOk = okUpdate && okAwake && okOnEnable && okOnDestroy && okDie && okSetHealth;
     if (allOk) {
-        AppendLogFmt("[InstallGameHooks] SUCCESS update=%p targetPoint=%p awake=%p onEnable=%p onDestroy=%p die=%p\n",
-            addrUpdate, GetTargetPoint, addrAwake, addrOnEnable, addrOnDestroy, addrDie);
+        AppendLogFmt("[InstallGameHooks] SUCCESS update=%p targetPoint=%p awake=%p onEnable=%p onDestroy=%p die=%p setHealth=%p\n",
+            addrUpdate, GetTargetPoint, addrAwake, addrOnEnable, addrOnDestroy, addrDie, addrSetHealth);
         return true;
     }
 
-    AppendLogFmt("[InstallGameHooks] Pending hooks update=%d awake=%d onEnable=%d onDestroy=%d die=%d\n",
-        okUpdate, okAwake, okOnEnable, okOnDestroy, okDie);
+    AppendLogFmt("[InstallGameHooks] Pending hooks update=%d awake=%d onEnable=%d onDestroy=%d die=%d setHealth=%d\n",
+        okUpdate, okAwake, okOnEnable, okOnDestroy, okDie, okSetHealth);
     return false;
 }
 

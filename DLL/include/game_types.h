@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "secure_types.h"
 
 // Basic vector used by the game's API.
 struct Vector3
@@ -12,14 +13,34 @@ struct Vector3
 // Forward declaration (fields not needed for current usage).
 struct PTTRFirstPersonController_o;
 
-// Minimal PTTRPlayer layout: only the fpCharacterController field is required.
 struct PTTRPlayer_o
 {
     void* klass;
     void* monitor;
     struct
     {
-        char pad_0000[0x720];
+        char pad_0000[0x28];
+        SecureFloat SHealth;                // +0x28
+        SecureFloat SPower;                 // +0x70
+        SecureFloat SKickCooldown;          // +0xB8
+        SecureFloat SStaminaPowerCooldown;  // +0x100
+        SecureFloat SAssimilationHealthBoost; // +0x148
+        SecureInt   SHealthBoost;           // +0x190
+        SecureInt   SPowerBoost;            // +0x1D8
+        SecureInt   SSpeedBoost;            // +0x220
+        SecureInt   SStaminaBoost;          // +0x268
+        SecureFloat SDashCooldown;          // +0x2B0
+        SecureFloat SShieldCooldown;        // +0x2F8
+        SecureInt   SHealthUpgrade;         // +0x340
+        SecureInt   SStaminaUpgrade;        // +0x388
+        SecureInt   SSpeedUpgrade;          // +0x3D0
+        SecureInt   SDurabilityUpgrade;     // +0x418
+        SecureInt   SAmmoUpgrade;           // +0x460
+        SecureInt   SDamageUpgrade;         // +0x4A8
+        SecureInt   SZoneDamageBoost;       // +0x4F0
+        SecureInt   SZoneSpeedBoost;        // +0x538
+        uint64_t    HeldItems0;             // +0x580
+        char        pad_0588[0x198];        // pad through visuals/util fields up to controller
         PTTRFirstPersonController_o* fpCharacterController; // +0x720
     } fields;
 };
@@ -27,6 +48,9 @@ struct PTTRPlayer_o
 // Shared globals for local player tracking (defined in dllmain.cpp).
 extern PTTRPlayer_o* g_LocalPlayer;
 extern Vector3 g_LocalPlayerPos;
+extern float g_LocalPlayerHealth;
+extern int g_LocalPlayerHealthBoost;
+extern int g_LocalPlayerHealthUpgrade;
 
 // Minimal IL2CPP list/array helpers for NetPlayer tracking.
 template <typename T>
