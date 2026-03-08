@@ -1,3 +1,12 @@
+## Compliance Notice / 合规声明
+
+- This repository is provided only for education, reverse engineering research, debugging, and interoperability study.
+- Do not use any code or ideas here for unauthorized access, cheating in online services, privacy invasion, data theft, malware delivery, or service disruption.
+- You must comply with applicable laws, platform Terms of Service, and software/game EULA before any use.
+- If any content infringes your rights, open an issue or contact the maintainer for removal.
+- Full statement: [DISCLAIMER.md](./DISCLAIMER.md)
+
+---
 # DLL Overlay / Hook
 
 DX11 + MinHook DLL to capture the local player's world position and render a minimal ImGui overlay.
@@ -23,3 +32,4 @@ DX11 + MinHook DLL to capture the local player's world position and render a min
 ## Notes
 - Feet read is disabled by default; Transform/TargetPoint paths have SEH guards and will log on failure.
 - If positions stop updating or a crash occurs, inspect the tail of `overlay_log.txt` for `GetTargetPoint`/`Transform_get_position` entries and share if further tuning is needed.
+
