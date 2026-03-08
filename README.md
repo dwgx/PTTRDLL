@@ -1,35 +1,43 @@
+# PTTRDLL
+
 ## Compliance Notice / 合规声明
 
-- This repository is provided only for education, reverse engineering research, debugging, and interoperability study.
-- Do not use any code or ideas here for unauthorized access, cheating in online services, privacy invasion, data theft, malware delivery, or service disruption.
-- You must comply with applicable laws, platform Terms of Service, and software/game EULA before any use.
-- If any content infringes your rights, open an issue or contact the maintainer for removal.
-- Full statement: [DISCLAIMER.md](./DISCLAIMER.md)
+- 本仓库仅用于学习、逆向研究、调试分析和兼容性研究。
+- 禁止用于未授权访问、破坏服务、隐私侵害、在线作弊、恶意传播等行为。
+- 使用者需自行遵守当地法律、平台条款与相关 EULA。
+- 完整声明见 [DISCLAIMER.md](./DISCLAIMER.md)
 
 ---
-# DLL Overlay / Hook
 
-DX11 + MinHook DLL to capture the local player's world position and render a minimal ImGui overlay.
+PTTRDLL 是一个 C++ DLL 项目，包含 DX11 Hook 与简易 Overlay 相关代码。
 
-## Features
-- DX11 Present/Resize hooks and Win32 WndProc hook (`Insert` toggles overlay visibility).
-- PTTRPlayer lifecycle hooks (Awake/OnEnable/Update/OnDestroy/Die) auto-capture the local player.
-- Position read path: `PTTRPlayer::GetTargetPoint` first, fallback to `Transform::get_position` (self then controller), all wrapped in SEH.
-- Logging to `D:\Project\overlay_log.txt` for hook state and any read exceptions.
-- ImGui render safety checks to avoid draw-data assertions/crashes.
+一句话：
+这是一个用于图形管线研究与调试的实验性项目，不是通用成品。
 
-## Build
-1. Open `DLL/DLL.vcxproj` (target name already set to `DLL.dll`).
-2. Select configuration/platform (Debug/Release, x86/x64).
-3. Build; outputs go to `bin/<arch>/<config>/DLL.dll` with `DLL.pdb` symbols.
+## 主要内容
 
-## Usage
-- Inject the matching-arch `DLL.dll` into the game process.
-- Swapchain hooks are set automatically (dummy swapchain used if needed).
-- Press `Insert` to show/hide the overlay. Window displays FPS and local player XYZ.
-- Check `D:\Project\overlay_log.txt` for diagnostics.
+- DX11 Present / Resize / WndProc 相关 Hook
+- 基于 ImGui 的调试层显示
+- 运行日志记录（用于定位问题）
 
-## Notes
-- Feet read is disabled by default; Transform/TargetPoint paths have SEH guards and will log on failure.
-- If positions stop updating or a crash occurs, inspect the tail of `overlay_log.txt` for `GetTargetPoint`/`Transform_get_position` entries and share if further tuning is needed.
+## 项目结构
 
+- `DLL/`：核心工程
+- `Data/`：相关数据
+- `DLL.slnx`：解决方案入口
+
+## 构建方式
+
+1. 用 Visual Studio 打开 `DLL.slnx` 或 `DLL/DLL.vcxproj`
+2. 选择平台（x86/x64）和配置（Debug/Release）
+3. 编译得到 DLL
+
+## 调试建议
+
+- 先在测试环境验证
+- 通过日志排查 Hook 初始化和渲染阶段问题
+- 出现异常时优先看最后几条日志
+
+## 免责声明
+
+本项目不提供任何违规用途支持。
